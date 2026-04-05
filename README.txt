@@ -1,6 +1,6 @@
 =====================================================
-  AP-HB AI Crypto Agent
-  Agent IA de chiffrement automatique de fichiers
+AP-HB AI Crypto Agent
+Agent IA de chiffrement automatique de fichiers
 =====================================================
 
 Agent IA développé pour l'AP-HB (Assistance Publique - Hopitaux et Biotechnologies).
@@ -11,7 +11,7 @@ Il garantit qu'AUCUNE donnée de santé ne sorte sous forme lisible.
   Conformité  : RGPD, HIPAA, Loi chinoise sur la cybersécurité (CSL)
 
 =====================================================
-  STRUCTURE DU PROJET
+STRUCTURE DU PROJET
 =====================================================
 
   ap-hb-crypto-agent/
@@ -31,7 +31,7 @@ Il garantit qu'AUCUNE donnée de santé ne sorte sous forme lisible.
         patients_test/     --> Faux dossiers patients pour tester
 
 =====================================================
-  INSTALLATION (à faire une seule fois)
+INSTALLATION (à faire une seule fois)
 =====================================================
 
 Étape 1 : Lancer le script de setup
@@ -68,7 +68,7 @@ Il garantit qu'AUCUNE donnée de santé ne sorte sous forme lisible.
 
 
 =====================================================
-  UTILISATION DE L'AGENT IA
+UTILISATION DE L'AGENT IA
 =====================================================
 
 Mode automatique — scan et chiffrement d'un dossier
