@@ -3,10 +3,6 @@
 AP-HB AI Crypto Agent — Agent IA de chiffrement automatique
 Propulsé par Groq (LLM) + AES-256-GCM (chiffrement)
 
-L'agent IA analyse la situation, raisonne, et décide quelles actions
-de chiffrement effectuer pour garantir qu'aucune donnée sensible
-ne sorte sous forme lisible.
-
 Usage:
     python3 ai_agent.py                        # Mode interactif
     python3 ai_agent.py --scan /dossier        # Scan et chiffrement automatique
@@ -16,62 +12,66 @@ Usage:
 import os
 import sys
 import json
+import shutil
 import argparse
-import getpass
 from pathlib import Path
-from typing import Any
+
+# Chargement automatique du fichier .env
+if os.path.exists(".env"):
+    with open(".env") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                os.environ[key.strip()] = value.strip()
 
 from groq import Groq
 from crypto_agent import (
     encrypt_directory, decrypt_directory,
-    load_master_key, generate_master_key,
-    audit_directory, watch_directory,
+    decrypt_file, load_master_key, generate_master_key,
     ENCRYPTED_EXT,
 )
 
-# ─── Configuration ────────────────────────────────────────────────────────────
+# ─── Configuration ─────────────────────────────────────────────────────────────
 
-MODEL        = "llama-3.3-70b-versatile"   # Modèle Groq (rapide et puissant)
-KEY_FILE     = "keys/master.key"
-MAX_TURNS    = 10                           # Sécurité : max 10 appels d'outils par session
+MODEL     = "llama-3.3-70b-versatile"
+KEY_FILE  = "keys/master.key"
+MAX_TURNS = 15
 
 SYSTEM_PROMPT = """Tu es l'Agent IA de Cyber-Sécurité de l'AP-HB (Assistance Publique - Hôpitaux et Biotechnologies).
 
-Ta mission principale est de garantir qu'AUCUNE donnée de santé ne sorte sous forme lisible.
-Tu es responsable du chiffrement automatique et robuste des fichiers sensibles.
+Ta mission est de gérer les fichiers de santé sensibles : créer des dossiers, copier des fichiers, chiffrer et déchiffrer de manière autonome.
 
 Tu disposes des outils suivants :
-- scanner_dossier : analyse un dossier et identifie les fichiers non protégés
-- chiffrer_dossier : chiffre tous les fichiers d'un dossier (AES-256-GCM)
-- dechiffrer_dossier : déchiffre un dossier vers une destination sûre
-- rapport_audit : génère un rapport de conformité sur l'état de protection
-- lister_fichiers : liste le contenu d'un dossier
+- lister_fichiers    : liste le contenu d'un dossier avec statut chiffré/en clair
+- creer_dossier      : crée un nouveau dossier
+- copier_fichier     : copie un fichier vers un dossier de destination
+- chiffrer_dossier   : chiffre tous les fichiers d'un dossier (AES-256-GCM)
+- dechiffrer_dossier : déchiffre tous les fichiers .aphb d'un dossier vers une destination
+- dechiffrer_fichier : déchiffre un seul fichier .aphb vers un dossier de destination
+- scanner_dossier    : analyse un dossier et identifie les fichiers non protégés
+- rapport_audit      : génère un rapport de conformité RGPD
 
-Tes règles de sécurité absolues :
-1. Tout fichier contenant des données de santé DOIT être chiffré
-2. Tu dois toujours vérifier l'état AVANT et APRÈS chiffrement
-3. Tu rapportes toujours le résultat de tes actions
-4. En cas de doute, tu chiffres (principe de précaution)
-5. Tu ne déchiffres que si explicitement demandé avec une destination sûre
+Règles absolues :
+1. Utilise toujours lister_fichiers en premier pour connaître l'état du dossier
+2. Tu peux créer des dossiers et copier des fichiers de manière autonome
+3. Après chaque action, confirme ce qui a été fait
+4. Réponds toujours en français
 
-Réponds toujours en français. Sois précis et professionnel.
-Après chaque action, confirme ce qui a été fait et l'état de sécurité actuel."""
+Quand on te demande de copier des fichiers chiffrés (.aphb), copie les .aphb directement."""
 
-# ─── Définition des outils pour Groq ─────────────────────────────────────────
+# ─── Définition des outils ─────────────────────────────────────────────────────
 
 TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "scanner_dossier",
-            "description": "Analyse un dossier et retourne la liste des fichiers en clair (non chiffrés) et des fichiers déjà chiffrés. Permet d'évaluer l'état de sécurité avant d'agir.",
+            "name": "lister_fichiers",
+            "description": "Liste tous les fichiers d'un dossier avec leur statut (chiffré .aphb ou en clair) et leur taille.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "chemin": {
-                        "type": "string",
-                        "description": "Chemin absolu ou relatif du dossier à analyser"
-                    }
+                    "chemin": {"type": "string", "description": "Dossier à lister"}
                 },
                 "required": ["chemin"]
             }
@@ -80,15 +80,41 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "chiffrer_dossier",
-            "description": "Chiffre tous les fichiers en clair d'un dossier avec AES-256-GCM. Les fichiers originaux sont effacés de manière sécurisée. À utiliser pour protéger des données de santé sensibles.",
+            "name": "creer_dossier",
+            "description": "Crée un nouveau dossier (et les dossiers parents si nécessaire).",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "chemin": {
-                        "type": "string",
-                        "description": "Chemin du dossier à chiffrer"
-                    }
+                    "chemin": {"type": "string", "description": "Chemin du dossier à créer"}
+                },
+                "required": ["chemin"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "copier_fichier",
+            "description": "Copie un fichier (en clair ou chiffré) vers un dossier de destination. Fonctionne avec tous les types de fichiers.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fichier_source": {"type": "string", "description": "Chemin complet du fichier à copier"},
+                    "dossier_destination": {"type": "string", "description": "Dossier de destination"}
+                },
+                "required": ["fichier_source", "dossier_destination"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "chiffrer_dossier",
+            "description": "Chiffre tous les fichiers en clair d'un dossier avec AES-256-GCM.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "chemin": {"type": "string", "description": "Dossier à chiffrer"}
                 },
                 "required": ["chemin"]
             }
@@ -98,18 +124,12 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "dechiffrer_dossier",
-            "description": "Déchiffre les fichiers .aphb d'un dossier vers une destination sûre. À utiliser uniquement pour la restauration après incident.",
+            "description": "Déchiffre tous les fichiers .aphb d'un dossier vers une destination.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "chemin_source": {
-                        "type": "string",
-                        "description": "Dossier contenant les fichiers chiffrés (.aphb)"
-                    },
-                    "chemin_destination": {
-                        "type": "string",
-                        "description": "Dossier de destination pour les fichiers restaurés"
-                    }
+                    "chemin_source": {"type": "string", "description": "Dossier contenant les .aphb"},
+                    "chemin_destination": {"type": "string", "description": "Dossier de destination"}
                 },
                 "required": ["chemin_source", "chemin_destination"]
             }
@@ -118,15 +138,27 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "rapport_audit",
-            "description": "Génère un rapport détaillé de conformité : nombre de fichiers chiffrés vs en clair, volume total, liste des fichiers non protégés.",
+            "name": "dechiffrer_fichier",
+            "description": "Déchiffre un seul fichier .aphb vers un dossier de destination.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "chemin": {
-                        "type": "string",
-                        "description": "Dossier à auditer"
-                    }
+                    "fichier_source": {"type": "string", "description": "Chemin du fichier .aphb à déchiffrer"},
+                    "dossier_destination": {"type": "string", "description": "Dossier de destination"}
+                },
+                "required": ["fichier_source", "dossier_destination"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "scanner_dossier",
+            "description": "Analyse un dossier et retourne les fichiers en clair vs chiffrés.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "chemin": {"type": "string", "description": "Dossier à analyser"}
                 },
                 "required": ["chemin"]
             }
@@ -135,15 +167,12 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "lister_fichiers",
-            "description": "Liste les fichiers présents dans un dossier avec leur statut (chiffré ou en clair).",
+            "name": "rapport_audit",
+            "description": "Génère un rapport de conformité RGPD sur l'état de protection d'un dossier.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "chemin": {
-                        "type": "string",
-                        "description": "Dossier à lister"
-                    }
+                    "chemin": {"type": "string", "description": "Dossier à auditer"}
                 },
                 "required": ["chemin"]
             }
@@ -151,53 +180,56 @@ TOOLS = [
     }
 ]
 
-# ─── Implémentation des outils ────────────────────────────────────────────────
+# ─── Implémentation des outils ─────────────────────────────────────────────────
 
-def scanner_dossier(chemin: str) -> dict:
+def lister_fichiers(chemin: str) -> dict:
     path = Path(chemin)
     if not path.exists():
         return {"erreur": f"Dossier introuvable : {chemin}"}
+    fichiers = []
+    for f in sorted(path.rglob("*")):
+        if f.is_file():
+            statut = "chiffre" if str(f).endswith(ENCRYPTED_EXT) else "en_clair"
+            fichiers.append({
+                "nom"   : str(f.relative_to(path)),
+                "statut": statut,
+                "taille": f"{f.stat().st_size} octets"
+            })
+    return {"dossier": chemin, "fichiers": fichiers, "total": len(fichiers)}
 
-    fichiers_clairs   = []
-    fichiers_chiffres = []
 
-    for f in path.rglob("*"):
-        if not f.is_file():
-            continue
-        if f.suffix in {".py", ".key", ".log", ".gitignore", ".txt"} and f.name == "README.txt":
-            continue
-        if str(f).endswith(ENCRYPTED_EXT):
-            fichiers_chiffres.append(str(f.relative_to(path)))
-        elif f.suffix not in {".py", ".key", ".log", ".md"}:
-            fichiers_clairs.append(str(f.relative_to(path)))
+def creer_dossier(chemin: str) -> dict:
+    try:
+        Path(chemin).mkdir(parents=True, exist_ok=True)
+        return {"succes": True, "message": f"Dossier créé : {chemin}"}
+    except Exception as e:
+        return {"succes": False, "erreur": str(e)}
 
-    return {
-        "dossier"          : chemin,
-        "fichiers_en_clair": fichiers_clairs,
-        "fichiers_chiffres": fichiers_chiffres,
-        "total_en_clair"   : len(fichiers_clairs),
-        "total_chiffres"   : len(fichiers_chiffres),
-        "alerte"           : len(fichiers_clairs) > 0,
-        "message"          : (
-            f"{len(fichiers_clairs)} fichier(s) non protégé(s) détecté(s) !"
-            if fichiers_clairs else
-            "Tous les fichiers sont chiffrés."
-        )
-    }
+
+def copier_fichier(fichier_source: str, dossier_destination: str) -> dict:
+    src = Path(fichier_source)
+    dst = Path(dossier_destination)
+    if not src.exists():
+        return {"erreur": f"Fichier introuvable : {fichier_source}"}
+    try:
+        dst.mkdir(parents=True, exist_ok=True)
+        dest_path = dst / src.name
+        shutil.copy2(src, dest_path)
+        return {"succes": True, "message": f"Copié : {src.name} → {dossier_destination}"}
+    except Exception as e:
+        return {"succes": False, "erreur": str(e)}
 
 
 def chiffrer_dossier(chemin: str, key: bytes) -> dict:
-    path = Path(chemin)
-    if not path.exists():
+    if not Path(chemin).exists():
         return {"erreur": f"Dossier introuvable : {chemin}"}
     try:
         stats = encrypt_directory(chemin, key)
         return {
-            "succes"    : True,
-            "chiffres"  : stats["encrypted"],
-            "ignores"   : stats["skipped"],
-            "erreurs"   : stats["errors"],
-            "message"   : f"{stats['encrypted']} fichier(s) chiffré(s) avec succès. {stats['errors']} erreur(s)."
+            "succes"  : True,
+            "chiffres": stats["encrypted"],
+            "erreurs" : stats["errors"],
+            "message" : f"{stats['encrypted']} fichier(s) chiffré(s)."
         }
     except Exception as e:
         return {"succes": False, "erreur": str(e)}
@@ -207,93 +239,107 @@ def dechiffrer_dossier(chemin_source: str, chemin_destination: str, key: bytes) 
     try:
         stats = decrypt_directory(chemin_source, chemin_destination, key)
         return {
-            "succes"     : True,
-            "dechiffres" : stats["decrypted"],
-            "erreurs"    : stats["errors"],
-            "destination": chemin_destination,
-            "message"    : f"{stats['decrypted']} fichier(s) restauré(s) dans {chemin_destination}."
+            "succes"    : True,
+            "dechiffres": stats["decrypted"],
+            "erreurs"   : stats["errors"],
+            "message"   : f"{stats['decrypted']} fichier(s) restauré(s) dans {chemin_destination}."
         }
     except Exception as e:
         return {"succes": False, "erreur": str(e)}
+
+
+def dechiffrer_fichier_unique(fichier_source: str, dossier_destination: str, key: bytes) -> dict:
+    src = Path(fichier_source)
+    if not src.exists():
+        return {"erreur": f"Fichier introuvable : {fichier_source}"}
+    if not str(fichier_source).endswith(ENCRYPTED_EXT):
+        return {"erreur": f"Ce fichier n'est pas un fichier chiffré .aphb : {fichier_source}"}
+    try:
+        Path(dossier_destination).mkdir(parents=True, exist_ok=True)
+        dest = decrypt_file(fichier_source, key, dossier_destination)
+        return {"succes": True, "message": f"Déchiffré : {src.name} → {dossier_destination}"}
+    except Exception as e:
+        return {"succes": False, "erreur": str(e)}
+
+
+def scanner_dossier(chemin: str) -> dict:
+    path = Path(chemin)
+    if not path.exists():
+        return {"erreur": f"Dossier introuvable : {chemin}"}
+    clairs, chiffres = [], []
+    for f in path.rglob("*"):
+        if not f.is_file() or f.suffix in {".py", ".key", ".log", ".md"}:
+            continue
+        if str(f).endswith(ENCRYPTED_EXT):
+            chiffres.append(str(f.relative_to(path)))
+        else:
+            clairs.append(str(f.relative_to(path)))
+    return {
+        "dossier": chemin,
+        "fichiers_en_clair": clairs,
+        "fichiers_chiffres": chiffres,
+        "total_en_clair": len(clairs),
+        "total_chiffres": len(chiffres),
+        "message": f"{len(clairs)} fichier(s) non protégé(s) !" if clairs else "Tout est chiffré."
+    }
 
 
 def rapport_audit(chemin: str) -> dict:
     path = Path(chemin)
     if not path.exists():
         return {"erreur": f"Dossier introuvable : {chemin}"}
-
     chiffres = list(path.rglob(f"*{ENCRYPTED_EXT}"))
-    clairs   = [
-        f for f in path.rglob("*")
-        if f.is_file()
-        and not str(f).endswith(ENCRYPTED_EXT)
-        and f.suffix not in {".py", ".key", ".log", ".md", ".txt", ".gitignore"}
-    ]
-
+    clairs = [f for f in path.rglob("*") if f.is_file()
+              and not str(f).endswith(ENCRYPTED_EXT)
+              and f.suffix not in {".py", ".key", ".log", ".md", ".txt", ".gitignore"}]
     volume_mb = sum(f.stat().st_size for f in chiffres) / (1024 * 1024)
-    conformite = "CONFORME" if not clairs else "NON CONFORME"
-
     return {
-        "dossier"          : chemin,
-        "conformite_rgpd"  : conformite,
+        "dossier": chemin,
+        "conformite_rgpd": "CONFORME" if not clairs else "NON CONFORME",
         "fichiers_chiffres": len(chiffres),
         "fichiers_en_clair": len(clairs),
         "liste_non_proteges": [str(f.relative_to(path)) for f in clairs[:10]],
         "volume_chiffre_mb": round(volume_mb, 2),
-        "message"          : (
-            f"NON CONFORME — {len(clairs)} fichier(s) exposé(s) en clair !"
+        "message": (
+            f"NON CONFORME — {len(clairs)} fichier(s) exposé(s) !"
             if clairs else
-            f"CONFORME RGPD — {len(chiffres)} fichier(s) protégé(s), volume {volume_mb:.2f} MB"
+            f"CONFORME RGPD — {len(chiffres)} fichier(s) protégé(s)"
         )
     }
 
 
-def lister_fichiers(chemin: str) -> dict:
-    path = Path(chemin)
-    if not path.exists():
-        return {"erreur": f"Dossier introuvable : {chemin}"}
-
-    fichiers = []
-    for f in sorted(path.rglob("*")):
-        if f.is_file():
-            statut = "chiffré" if str(f).endswith(ENCRYPTED_EXT) else "📄 en clair"
-            fichiers.append({
-                "nom"   : str(f.relative_to(path)),
-                "statut": statut,
-                "taille": f"{f.stat().st_size} octets"
-            })
-    return {"dossier": chemin, "fichiers": fichiers, "total": len(fichiers)}
-
-
-# ─── Exécuteur d'outils ───────────────────────────────────────────────────────
+# ─── Exécuteur d'outils ────────────────────────────────────────────────────────
 
 def executer_outil(nom: str, arguments: dict, key: bytes) -> str:
-    """Exécute un outil et retourne le résultat en JSON."""
-    print(f"\n  Outil appelé : {nom}({', '.join(f'{k}={v}' for k,v in arguments.items())})")
+    print(f"\n  {nom}({', '.join(f'{k}={v}' for k,v in arguments.items())})")
 
-    if nom == "scanner_dossier":
-        result = scanner_dossier(arguments["chemin"])
+    if nom == "lister_fichiers":
+        result = lister_fichiers(arguments["chemin"])
+    elif nom == "creer_dossier":
+        result = creer_dossier(arguments["chemin"])
+    elif nom == "copier_fichier":
+        result = copier_fichier(arguments["fichier_source"], arguments["dossier_destination"])
     elif nom == "chiffrer_dossier":
         result = chiffrer_dossier(arguments["chemin"], key)
     elif nom == "dechiffrer_dossier":
         result = dechiffrer_dossier(arguments["chemin_source"], arguments["chemin_destination"], key)
+    elif nom == "dechiffrer_fichier":
+        result = dechiffrer_fichier_unique(arguments["fichier_source"], arguments["dossier_destination"], key)
+    elif nom == "scanner_dossier":
+        result = scanner_dossier(arguments["chemin"])
     elif nom == "rapport_audit":
         result = rapport_audit(arguments["chemin"])
-    elif nom == "lister_fichiers":
-        result = lister_fichiers(arguments["chemin"])
     else:
         result = {"erreur": f"Outil inconnu : {nom}"}
 
-    print(f"  Résultat : {json.dumps(result, ensure_ascii=False)[:200]}...")
+    print(f"  {json.dumps(result, ensure_ascii=False)[:200]}")
     return json.dumps(result, ensure_ascii=False)
 
 
-# ─── Boucle agent ─────────────────────────────────────────────────────────────
+# ─── Boucle agent ──────────────────────────────────────────────────────────────
 
 def run_agent(client: Groq, messages: list, key: bytes) -> str:
-    """Boucle ReAct : l'agent raisonne, appelle des outils, observe, répète."""
     turns = 0
-
     while turns < MAX_TURNS:
         turns += 1
         response = client.chat.completions.create(
@@ -303,129 +349,98 @@ def run_agent(client: Groq, messages: list, key: bytes) -> str:
             tool_choice="auto",
             max_tokens=2048,
         )
-
         message = response.choices[0].message
-
-        # Si l'agent a fini (pas d'appel d'outil)
         if not message.tool_calls:
             return message.content
 
-        # L'agent appelle un ou plusieurs outils
         messages.append({
             "role"      : "assistant",
             "content"   : message.content or "",
             "tool_calls": [
-                {
-                    "id"      : tc.id,
-                    "type"    : "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments}
-                }
+                {"id": tc.id, "type": "function",
+                 "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
                 for tc in message.tool_calls
             ]
         })
-
-        # Exécuter chaque outil et ajouter les résultats
         for tool_call in message.tool_calls:
             arguments = json.loads(tool_call.function.arguments)
             result    = executer_outil(tool_call.function.name, arguments, key)
             messages.append({
-                "role"        : "tool",
-                "tool_call_id": tool_call.id,
-                "content"     : result
+                "role": "tool", "tool_call_id": tool_call.id, "content": result
             })
-
     return "Nombre maximum de tours atteint."
 
 
-# ─── Interface principale ─────────────────────────────────────────────────────
+# ─── Interface principale ──────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="AP-HB AI Crypto Agent — Agent IA de chiffrement (Groq + AES-256-GCM)"
-    )
-    parser.add_argument("--scan",   metavar="DOSSIER", help="Scanner et chiffrer automatiquement un dossier")
-    parser.add_argument("--prompt", metavar="TEXTE",   help="Envoyer une instruction directe à l'agent")
+    parser = argparse.ArgumentParser(description="AP-HB AI Crypto Agent")
+    parser.add_argument("--scan",   metavar="DOSSIER")
+    parser.add_argument("--prompt", metavar="TEXTE")
     args = parser.parse_args()
 
     print("\n")
-    print("AP-HB AI Crypto Agent  •  Groq + AES-256-GCM    ")
-    print("Agent IA de chiffrement automatique             ")
+    print("AP-HB AI Crypto Agent  •  Groq + AES-256-GCM  ")
+    print("Agent IA de chiffrement automatique            ")
     print("\n")
 
-    # Clé API Groq
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
-        print("Clé API Groq non trouvée dans les variables d'environnement.")
+        print("Clé API Groq non trouvée.")
         api_key = input("   Entrez votre clé API Groq : ").strip()
 
     client = Groq(api_key=api_key)
 
-    # Clé de chiffrement
     if not os.path.exists(KEY_FILE):
-        print("\nAucune clé maître trouvée. Génération en cours...")
+        print("Aucune clé maître trouvée. Génération en cours...")
         generate_master_key(KEY_FILE)
 
     key = load_master_key(KEY_FILE)
     print()
 
-    # Mode --scan : l'agent scanne et chiffre automatiquement
     if args.scan:
-        prompt_initial = (
-            f"Analyse le dossier '{args.scan}', identifie tous les fichiers non protégés, "
-            f"chiffre-les immédiatement, puis génère un rapport de conformité final."
-        )
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": prompt_initial}
-        ]
-        print(f"Agent IA : analyse automatique de '{args.scan}'...\n")
-        reponse = run_agent(client, messages, key)
+        prompt = (f"Liste d'abord les fichiers de '{args.scan}', puis analyse, "
+                  f"chiffre tous les fichiers en clair, et génère un rapport de conformité final.")
+        messages = [{"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user",   "content": prompt}]
+        print(f"Analyse automatique de '{args.scan}'...\n")
         print(f"\n{'─'*55}")
-        print(f"Agent IA :\n{reponse}")
+        print(f"Agent IA :\n{run_agent(client, messages, key)}")
         return
 
-    # Mode --prompt : instruction directe
     if args.prompt:
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": args.prompt}
-        ]
-        print(f"Agent IA : traitement de votre demande...\n")
-        reponse = run_agent(client, messages, key)
+        messages = [{"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user",   "content": args.prompt}]
+        print(f"Traitement en cours...\n")
         print(f"\n{'─'*55}")
-        print(f"Agent IA :\n{reponse}")
+        print(f"Agent IA :\n{run_agent(client, messages, key)}")
         return
 
-    # Mode interactif (chat)
+    # Mode interactif
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     print("Mode interactif — tapez votre instruction (ou 'quitter' pour sortir)")
     print("   Exemples :")
-    print("   • 'Scanne et chiffre le dossier demo/patients_test'")
+    print("   • 'Mets dupont_jean et martin_marie dans un dossier confidentiel chiffré'")
+    print("   • 'Déchiffre ordonnance_dupont dans le dossier recuperation'")
     print("   • 'Génère un rapport d'audit sur demo/'")
-    print("   • 'Restaure demo/patients_test vers demo/restauration'")
     print(f"{'─'*55}\n")
 
     while True:
         try:
             user_input = input("Vous : ").strip()
         except (KeyboardInterrupt, EOFError):
-            print("\n\nAu revoir !")
+            print("\nAu revoir !")
             break
-
         if not user_input:
             continue
         if user_input.lower() in {"quitter", "exit", "quit"}:
             print("Au revoir !")
             break
-
         messages.append({"role": "user", "content": user_input})
-        print("\nAgent IA : réflexion en cours...")
-
+        print("\nRéflexion en cours...")
         reponse = run_agent(client, messages, key)
         messages.append({"role": "assistant", "content": reponse})
-
-        print(f"\nAgent IA :\n{reponse}\n")
-        print(f"{'─'*55}\n")
+        print(f"\nAgent IA :\n{reponse}\n{'─'*55}\n")
 
 
 if __name__ == "__main__":

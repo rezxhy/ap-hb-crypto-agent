@@ -355,7 +355,7 @@ def audit_directory(directory: str) -> None:
     print(f"  RAPPORT D'AUDIT — {directory}")
     print(f"{'━'*50}")
     print(f"  Fichiers chiffrés (.aphb) : {len(encrypted)}")
-    print(f"   Fichiers en clair         : {len(plain)}")
+    print(f"  Fichiers en clair         : {len(plain)}")
 
     if plain:
         print("\n  ATTENTION — Fichiers non protégés :")
@@ -395,10 +395,10 @@ def main():
 
     args = parser.parse_args()
 
-    print("\n╔══════════════════════════════════════════╗")
-    print("║  AP-HB Crypto Agent  •  AES-256-GCM     ║")
-    print("║  Conformité RGPD / HIPAA / CSL Chine    ║")
-    print("╚══════════════════════════════════════════╝\n")
+    print("\n")
+    print("AP-HB Crypto Agent  •  AES-256-GCM     ")
+    print("Conformité RGPD / HIPAA / CSL Chine    ")
+    print("\n")
 
     if args.command == "keygen":
         generate_master_key()
