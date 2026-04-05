@@ -2,38 +2,15 @@
 AP-HB AI Crypto Agent
 Agent IA de chiffrement automatique de fichiers
 =====================================================
-
 Agent IA développé pour l'AP-HB (Assistance Publique - Hopitaux et Biotechnologies).
 Il garantit qu'AUCUNE donnée de santé ne sorte sous forme lisible.
 
   Modèle IA   : Groq / LLaMA 3.3 70B (gratuit)
   Chiffrement : AES-256-GCM
   Conformité  : RGPD, HIPAA, Loi chinoise sur la cybersécurité (CSL)
-
-=====================================================
-STRUCTURE DU PROJET
-=====================================================
-
-  ap-hb-crypto-agent/
-  |
-  |-- ai_agent.py          --> Agent IA principal (Groq + outils de chiffrement)
-  |-- crypto_agent.py      --> Moteur de chiffrement AES-256-GCM
-  |-- setup.sh             --> Script d'installation automatique
-  |-- requirements.txt     --> Dépendances Python
-  |-- .env.example         --> Modèle de configuration (à copier en .env)
-  |-- LICENSE              --> Licence MIT
-  |-- README.txt        
-  |
-  |-- keys/
-  |     master.key         --> Clé maître chiffrée (créée au premier lancement)
-  |
-  |-- demo/
-        patients_test/     --> Faux dossiers patients pour tester
-
 =====================================================
 INSTALLATION (à faire une seule fois)
 =====================================================
-
 Étape 1 : Lancer le script de setup
 
     bash setup.sh
@@ -65,12 +42,9 @@ INSTALLATION (à faire une seule fois)
     source venv/bin/activate
 
   Vous verrez (venv) apparaître au début de la ligne.
-
-
 =====================================================
 UTILISATION DE L'AGENT IA
 =====================================================
-
 Mode automatique — scan et chiffrement d'un dossier
 
     python3 ai_agent.py --scan demo/patients_test
@@ -103,11 +77,9 @@ Premier lancement — génération de la clé maître :
     Confirmer le mot de passe       : [confirmez]
 
   Pour le test de démonstration, vous pouvez utiliser : DemoAPHB2026!
-
 =====================================================
 CE QUE FAIT L'AGENT IA (fonctionnement interne)
 =====================================================
-
   L'agent raisonne en plusieurs étapes automatiques :
 
     1. Il ANALYSE le dossier
@@ -126,11 +98,9 @@ CE QUE FAIT L'AGENT IA (fonctionnement interne)
     4. Il VÉRIFIE que tout est protégé
 
     5. Il RAPPORTE le résultat en français
-
 =====================================================
 CONFORMITÉ RÉGLEMENTAIRE
 =====================================================
-
   RGPD Article 32
     --> Chiffrement des données personnelles de santé
 
@@ -142,16 +112,11 @@ CONFORMITÉ RÉGLEMENTAIRE
 
   HDS - Hébergement de Données de Santé (France)
     --> Traçabilité et intégrité des données de santé
-
-
 =====================================================
 LICENCE
 =====================================================
-
   MIT License (open source, utilisation libre)
   Voir le fichier LICENSE pour le texte complet.
-
-
 =====================================================
 AUTEURS
 =====================================================
