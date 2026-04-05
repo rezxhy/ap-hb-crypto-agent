@@ -1,0 +1,16 @@
+==============================
+  ORDONNANCE - CONFIDENTIEL
+==============================
+
+Patient       : Jean Dupont (AP-HB-2024-00142)
+Date          : 12/01/2026
+Medecin       : Dr. Sophie Bernard (RPPS: 10003456789)
+
+Medicaments prescrits :
+  1. Metformine 500mg  - 2 comprimes par jour (matin et soir)
+  2. Vitamine D3 1000UI - 1 gelule par jour le midi
+
+Duree        : 3 mois
+Renouvelable : Oui (2 fois)
+
+Signature electronique : DR-BERNARD-2026-0112-SB
