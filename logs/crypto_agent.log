@@ -1,0 +1,23 @@
+2026-04-05 00:32:42,506 [ERROR] Mot de passe trop court (minimum 12 caractères).
+2026-04-05 00:35:26,280 [INFO] ✅  Clé maître générée → keys/master.key  (fingerprint: 8df1e5f1a60e5d34)
+2026-04-05 00:35:32,815 [INFO] 🔓  Clé chargée (fingerprint: 8df1e5f1a60e5d34)
+2026-04-05 00:35:33,491 [INFO] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-05 00:35:33,506 [INFO] 📁  Chiffrement du répertoire : demo/patients_test
+2026-04-05 00:35:33,519 [INFO] 🔒  Chiffré : demo/patients_test/dupont_jean.txt → demo/patients_test/dupont_jean.txt.aphb  (0.5 KB)
+2026-04-05 00:35:33,530 [INFO] 🔒  Chiffré : demo/patients_test/ordonnance_dupont.txt → demo/patients_test/ordonnance_dupont.txt.aphb  (0.4 KB)
+2026-04-05 00:35:33,539 [INFO] 🔒  Chiffré : demo/patients_test/martin_marie.txt → demo/patients_test/martin_marie.txt.aphb  (0.5 KB)
+2026-04-05 00:35:33,539 [INFO] ✅  Chiffrement terminé — chiffrés: 3, ignorés: 0, erreurs: 0
+2026-04-05 00:35:34,112 [INFO] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-05 00:40:58,248 [INFO] Clé chargée (fingerprint: 8df1e5f1a60e5d34)
+2026-04-05 00:40:58,696 [INFO] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-05 00:40:58,716 [INFO] Chiffrement du répertoire : demo/patients_test
+2026-04-05 00:40:58,717 [INFO] Chiffrement terminé — chiffrés: 0, ignorés: 3, erreurs: 0
+2026-04-05 00:41:00,245 [INFO] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-05 00:42:40,889 [INFO] Clé chargée (fingerprint: 8df1e5f1a60e5d34)
+2026-04-05 00:42:41,484 [INFO] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-05 00:42:41,499 [INFO] Déchiffrement de : demo/patients_test → demo/restauration
+2026-04-05 00:42:41,500 [INFO] Déchiffré : demo/patients_test/dupont_jean.txt.aphb → demo/restauration/dupont_jean.txt
+2026-04-05 00:42:41,501 [INFO] Déchiffré : demo/patients_test/martin_marie.txt.aphb → demo/restauration/martin_marie.txt
+2026-04-05 00:42:41,501 [INFO] Déchiffré : demo/patients_test/ordonnance_dupont.txt.aphb → demo/restauration/ordonnance_dupont.txt
+2026-04-05 00:42:41,501 [INFO] Déchiffrement terminé — déchiffrés: 3, ignorés: 0, erreurs: 0
+2026-04-05 00:42:42,174 [INFO] HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
